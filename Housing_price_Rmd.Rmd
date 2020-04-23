@@ -1,0 +1,424 @@
+# Housing price prediction using Bayesian regression
+
+# Background
+
+As a statistical consultant working for a real estate investment firm, my task is to develop a model to predict the selling price of a given home in Ames, Iowa. My employer hopes to use this information to help assess whether the asking price of a house is higher or lower than the true value of the house. If the home is undervalued, it may be a good investment for the firm.
+
+# Training Data and relevant packages
+
+
+```{r load, message = FALSE}
+load("ames_train.Rdata")
+```
+
+
+
+```{r packages, message=FALSE, warning=FALSE}
+library(statsr)
+library(dplyr)
+library(BAS)
+library(ggplot2)
+library(MASS)
+```
+
+## Part 1 - Exploratory Data Analysis (EDA)
+
+
+* * *
+
+For the first part, that is the EDA, we will look at the data and choose the 19 most important variables from this data set.(10 for our initial model and 19 for our final). From our intial 80 variables, we look at the ones which could be useful and eliminate the rest. For example, we surely know that the variable "PID" will not be of any value to us hence we eliminate it. Similarly we eliminate all such completely non informative variables first. We still will be left with too many variables for a well rounded regression model. The next step is to look at the variables in the summary statistics and see if it is useful from a logical standpoint. For instance, Pool.QC could give us valuable information considering that the higher the quality of a pool the higher the property price probably. However, taking a look at the summary statistics we realize that there are 3 obvservations with pools. Which greatly limits its predicting strength and we would be much better of choosing more informative variables in its stead. Note that initially I narrowed down the variable count from 80 to approximately 40 purely by a visual and logical standpoint and from there, I narrowed it down to 19 using summary statistics of the data and graphical relationships. However, it is not practical to show all the graphs in this section and will limit it to three rather important graphs and statistics to give an idea of the process.
+
+
+
+First let us take a look at the summary statistics of the dataset for the first 10 variables :
+
+```{r}
+summary(ames_train[1:10])
+```
+Next, we will plot the relationship between the floor area and th price of the house.
+
+```{r creategraphs}
+ggplot(data=ames_train,aes(x=area,y=price))+geom_point()
+```
+
+
+We can see that there is a positve relationship between the area of the plot and the price of the house however, it isnt entirely linear and trying upon the log transform(which is a method to transform the variables in such a way that the model fits better.The process can be reversed if we need to use for prediction.)
+Taking log transform for both price as well as area:
+
+```{r}
+ggplot(data=ames_train,aes(x=log(area),y=log(price)))+geom_point()
+```
+
+
+As we can see this is a more linear curve and it has been similarly found that the log transform for price tends to give more linear relationship between the price and the rest of the variables and hence for our model we will be using log(price).
+
+Next we will be taking a look at the relationship between number of fireplaces bedrooms and and the housing price.
+
+```{r}
+ggplot(data=ames_train,aes(x=as.factor(Fireplaces),y=price))+geom_boxplot()
+```
+
+
+As expected, we can see that the greater number of fireplaces the higher the average tends to be. One interesting point is the fact that even though Fireplaces are stepwise we have to use as.factor so as to equate them to categorical values.
+
+Next we willtake a look at the relationship between whether the street outside is paved or not has a correlation with price of the house.
+
+```{r}
+ggplot(data=ames_train,aes(x=Street,y=price))+geom_boxplot()
+```
+
+
+Again, we can see a huge difference in the means of prices of those homes with a paved road as compared to those with gravel.
+I hope these illustrations gave a basic idea as to why the variables that have been chosen is chosen. Moving on to the next section where we will develop the intitial linear regression model.
+* * *
+
+## Part 2 - Development and assessment of an initial model, following a semi-guided process of analysis
+
+### Section 2.1 An Initial Model
+
+
+Here we will use 10 of the 19 variables that have been narrowed down from our EDA and we will create a linear model against the log(price). The variables chosen include:
+1. MS.SubClass: This gives us an idea of the kind of dwelling is involved in the sale and is useful considering that newer and more storied houses in general will be more expensive.
+2. Year.Built: This tells us the year that the building was built. It is relevant as newer houses tend to be priced higher.
+3.Neighborhood: The price of a house depends on the location and hence Neighborhood is a good variable to be included.
+4. Condition1: This indicates whether the house is near a major road or highway or hub. This is self explanotory as to why this variable is included.
+5. Overall Quality: The overall materials used in building the house obviously determines the quality and hence the price of the house.
+6.Area: This area refers to the floor area which indicates how large the house is and the relationship is rather self explanatory.
+7.Sale_condition: This indicates whether the sale was done normally or by forclusure or sales between family members and so on. This matters as normal sales to have higher prices as compared to abnormal sales such as those between family members etc.
+8.Street: This variable tells us whether the road next to the property is paved or is a gravel road. 
+9.Fireplaces: This tells us the number of fireplaces in the house.
+10.Overall condition: This indicates the overall condition of the house.
+
+Below, we have fitted all the variables into a linear model and a summary is shown.
+
+```{r fit_model}
+m_log_price<-lm(log(price)~log(area)+Overall.Cond+Year.Built+MS.SubClass+Fireplaces+Street+Sale.Condition+Overall.Qual+Condition.1+Neighborhood,data=ames_train)
+summary(m_log_price)
+```
+
+
+Given above is the summary of the model. For the model we have got an R^2 of 0.8819 where R^2 is a statistical measure of how close the data are to the fitted regression line. It is also known as the coefficient of determination, or the coefficient of multiple determination for multiple regression.
+
+The definition of R-squared is fairly straight-forward; it is the percentage of the response variable variation that is explained by a linear model.
+The higher the R^2 the better and note that R^2 varies from 0 to 1.
+
+Some of the most important variables included are log(area),Overall.Cond etc which have a very small p-value. P-value indicates the probability that the price of the house is independant of the variable given, hence lower the P-value the better.
+In the next section we will choose the a model from withing all the possible combinations of these models.
+* * *
+
+### Section 2.2 Model Selection
+
+
+
+* * *
+
+We will be using two methods select our model variables and they are BIC(Bayesian Information Criterion) and AIC(Akaike Information Criterion) to choose the final variables. This model selection is done using a function stepAIC under backwards elimination method. We will get two models at the end of this out of which we will compare the two.
+
+```{r model_select}
+m_log_price_BIC<-stepAIC(m_log_price,direction="backward",k=log(1000))
+m_log_price_AIC<-stepAIC(m_log_price,direction="backward")
+```
+
+
+Here we get two models, and the model using AIC gives us 9 variables in our final model whereas the model using BIC gives us 8, this difference is due to the fact that BIC penalizes the number of observations so as to restrict overfitting further than AIC. We will choose the model using BIC to proceed further.
+* * *
+
+### Section 2.3 Initial Model Residuals
+
+* * *
+In this next section we will take a look at the model residuals and its various plots.
+
+1.Linearity and Constant Variance: Let us plot the scatterplot between residuals and fitted values to check whether there is linearity and constant variance.
+
+
+```{r model_resid}
+ggplot(data = m_log_price_BIC, aes(x = .fitted, y = .resid)) +
+  geom_point(alpha = 0.6) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Fitted values", y = "Residuals")
+
+```
+
+
+
+We can see that there is linearity as well as constant variability however, there is a few points which seem like outliers.
+
+
+
+Normality: To check this condition, we can look at a histogram of residuals
+
+
+
+
+```{r}
+ggplot(data = m_log_price_BIC, aes(x = .resid)) +
+  geom_histogram() +
+  xlab("Residuals")
+```
+
+The plot indicates that the data is fairly normally distributed with the exception of a few outliers.
+
+
+Next, we take a look at the Q-Q plot:
+
+
+```{r}
+plot(m_log_price_BIC, which = 2)
+```
+
+
+We can see that the graph shows the line to be fairly straight with the exception of the points at the very end. The outliers are given in this graph and observations 741,310, and 428 are the outliers. However we will keep these points for this particular model.
+* * *
+
+### Section 2.4 Initial Model RMSE
+
+
+
+
+
+
+* * *
+
+Here we find the RMSE for the model. Note that we transform the predicted price back to its dollar form using exp.
+
+
+```{r model_rmse}
+y=predict(m_log_price_BIC,ames_train,interval = "prediction", level = 0.95)
+mean(sqrt((exp(y[,1])-ames_train$price)^2))
+```
+
+Here we can see that the root mean square error is 18583.6 usd, which can approximately be interpreted as that on average there is an average error between the predicted price and actual price o 18583.6 USD.
+* * *
+
+### Section 2.5 Overfitting 
+
+
+
+```{r loadtest, message = FALSE}
+load("ames_test.Rdata")
+```
+
+
+* * *
+
+
+```{r initmodel_test}
+ames_test<-ames_test[-205,]
+```
+```{r}
+x=predict(m_log_price_BIC,ames_test,interval = "prediction", level = 0.95)
+mean(sqrt((exp(x[,1])-ames_test$price)^2))
+```
+This is our RMSE for our test data set. Clearly there isnt any signs of overfitting as the error value is lesser for the test model which is indeed quite a surprise.
+
+* * *
+
+
+
+## Part 3 Development of a Final Model
+
+
+
+Here we will take the rest of the 9 variables along with the 8 we have already selected in our final initial model to make our final model.
+
+The rest of the 10 variables are as follows:
+1.log(Lot.Area): This different from log(area) in the fact that this gives us the total area of the plot whereas log(area) only gives us the floor area of the house. We take log transform for this variable as well for reasons given above.
+
+2.Garage_Qual : This gives us the quality of the garage present in the house and if there isnt a garage. 
+
+
+3.Bsmt.Cond : This gives us the condition of the basement of the house. 
+
+4.Bedroom.AbvGr : This tells us how many bedrooms are there in the house, and generally, higher the number of bedrooms the more expensive the house tends to be.
+
+5.Kitchen.Qual : This tells us about the quality of the kitchen present in the house which is a pretty good indicator on how a house is priced.
+
+6.Year.Remod.Add : This tells when was the last time the house was remodelled or altered. This is an important indicator as houses remodelled recently tend to have higher prices.
+
+7.Heating.QC : This gives us the condition of the heating system of a house. 
+
+8.Full.Bath : This tells us about the number of bathrooms in the house. 
+
+9. MS.Zoning : This tells us the about the general locality of the house( whether it is an industrial location, residential location etc).
+
+Using this data let us proceed with our final model.
+
+### Section 3.1 Final Model
+
+
+
+Below is the model for our full final model.
+
+
+```{r model_playground}
+m_full<-lm(log(price)~log(area)+Overall.Cond+Year.Built+MS.SubClass+Fireplaces+Sale.Condition+Overall.Qual+Neighborhood+MS.Zoning+Full.Bath+Heating.QC+Year.Remod.Add+Kitchen.Qual+BsmtFin.SF.1+Bedroom.AbvGr+Garage.Cars+log(Lot.Area),data=ames_train)
+summary(m_full)
+```
+
+* * *
+
+### Section 3.2 Transformation
+
+Did you decide to transform any variables?  Why or why not? Explain in a few sentences.
+
+* * *
+
+We have transformed a total of three variables including price. The other two are Lot.Area and Area. We have transformed them as we get more linear relations between the variables on log tranforming.
+
+* * *
+
+### Section 3.3 Variable Interaction
+
+
+We have not check for any variable interactions explicitly however we have tried to keep most variables as independant as possible with the exception of Lot.Area and Area, those two variables even though are dependant on each other in some way they also provide valuable information nevertheless.
+
+* * *
+
+### Section 3.4 Variable Selection
+
+
+* * *
+
+We will be choosing BIC to select the variables for our final model as well as this has proven to be quite a solid method for modelling and we can easily compare the difference between our initial as well as final model and see if the new variables played much of a role.
+
+Given below is the final model using BIC.
+```{r}
+colSums(is.na(ames_test))
+  
+
+```
+
+```{r}
+m_final_BIC<-stepAIC(m_full,k=log(1000),direction="backward")
+```
+
+
+
+* * *
+
+### Section 3.5 Model Testing
+
+
+* * *
+Given below are the RMSE values for our testing set and our training set.
+
+```{r}
+y=predict(m_final_BIC,ames_train,interval = "prediction", level = 0.95)
+mean((sqrt((exp(y[,1])-ames_train$price)^2))[-c(434,913)])
+```
+
+```{r model_testing}
+x=predict(m_final_BIC,ames_test,interval = "prediction", level = 0.95)
+z=mean(sqrt((exp(x[,1])-ames_test$price)^2))
+z
+```
+As we can see, the values are comparable with the testing set having a slightly lower value of RMSE. This could be due to the reason that there are more outliers in our training set which inflates the error value and hence there is no need to do any further modifications to our model.
+
+In the next section we will conduct a final evaluation of our model
+* * *
+
+## Part 4 Final Model Assessment
+
+### Section 4.1 Final Model Residual
+
+
+* * *
+Given below is the residuals vs log(price) for our final model.
+```{r}
+plot(m_final_BIC,which=1)
+```
+
+
+Here again we can see that the data is mostly linear and seems to have  a constant variability with the exception of 3 outliers.
+
+Next we will take a look at the QQ plot:
+```{r}
+plot(m_final_BIC,which=2)
+```
+
+
+Again, similar to our previous section, the plot is straight indicating a normal distribution of the residuals with the exception of the outliers. 
+
+The graphs so far seem in line with our initial model and seems acceptable for our model.
+
+* * *
+
+### Section 4.2 Final Model RMSE
+
+* * *
+We have calculated our RMSE for our testing set as well as training set and found both to be comparable as well as a rather acceptable range.
+
+For a better understanding of whether our RMSE is in a acceptable range we can find the average percentage change between our price and our predicted prices.
+
+```{r}
+percent_difference=(z/mean(ames_test$price))
+percent_difference
+```
+
+So our model has an average difference of 8.38% between the predicted price and the actual price for our test data.
+
+
+* * *
+
+### Section 4.3 Final Model Evaluation
+
+
+* * *
+With all models this model too has weaknesses as well as strengths. One of the major strengths lie in the simplicity and transperancy of our model considering it is a linear model with all the steps very understandable however, with this simplicity we sacrifice the accuracy some of the black box models offers. This is especially the case considering the fact that not all the variables are perfectly linear and there are a few outliers which we have not treated for. However, a percentage of 8.3% is a rather good value and would surely be helpful in the decision making process.
+
+* * *
+
+### Section 4.4 Final Model Validation
+
+
+
+
+```{r loadvalidation, message = FALSE}
+load("ames_validation.Rdata")
+```
+
+* * *
+
+For our model validation set we will take a look at our RMSE first and compare with our training as well as testing set.
+```{r model_validate}
+ames_validation%>%
+  group_by(MS.Zoning)%>%
+  summarize(m=n())
+which(ames_validation$MS.Zoning=="A (agr)")
+ames_validation<-ames_validation[-387,]
+  
+
+a=predict(m_final_BIC,ames_validation,interval = "prediction", level = 0.95)
+b=mean(sqrt((exp(a[,1])-ames_validation$price)^2))
+b
+
+
+```
+
+This is our RMSE value for our validation set which is lower than that of the training as well as testing set. This very well could be  fortunate coincidence however, it implies the lack of overfitting and hence our model turns out to be a rather well rounded model.
+
+Next we will see what percentage of the 95% credible intervals contain the true price of the house in the validation set. 
+```{r}
+a=predict(m_final_BIC,ames_validation,interval = "prediction", level = 0.95)
+
+```
+```{r}
+a=exp(as.data.frame(a))
+```
+```{r}
+nu_wrong_preds=sum(ames_validation$price<=a$lwr & ames_validation$price>=a$upr/length(a$fit))
+nu_wrong_preds
+
+nu_wrong_preds/length(a$fit)
+```
+We can see that a percentage of 0.6561 or a total of 5 values of price have not being predicted within the credible intervals which is a very good indicator of the accuracy of the model. There is very little uncertainty  in our model.
+
+* * *
+
+## Part 5 Conclusion
+
+
+* * *
+
+The linear regression model given above has been quite accurate in terms of prediction of the validation set with 99.94% of all our prices being predicted within a credible interval of 95% and an RMSE of 13998 USD. The model in the final model outperformed the initial model by a solid margin but one important point to note is that higher the number of variables doesnt equate to a much better model. There seems to be a diminishing returns as the number of variables increase and in the end, from our 19 variables only 12 came in the final model.
+* * *
